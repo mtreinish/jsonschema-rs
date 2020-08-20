@@ -22,7 +22,7 @@ jobs:
       - uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: nightly
+          toolchain: nightly-i686-pc-windows-msvc
           override: true
         if: matrix.build_env.arch == 'x86'
       - uses: actions/setup-python@v2
