@@ -58,7 +58,6 @@ jobs:
       - uses: actions/upload-artifact@v2
         with:
           path: ./wheelhouse/*.whl
-
   create_source_dist:
     name: Create sdist package
     runs-on: ubuntu-latest
@@ -84,8 +83,7 @@ jobs:
 
 #  upload_to_pypi:
 #    needs:
-#    - create_macos_and_windows_wheels
-#    - create_wheels_manylinux
+#    - build_wheels
 #    - create_source_dist
 #    name: Upload Artifacts to PyPi
 #    runs-on: ubuntu-latest
