@@ -34,7 +34,7 @@ jobs:
           python -m pip install cibuildwheel==1.5.5
       - name: Build wheels
         run: |
-          python -m cibuildwheel --output-dir wheelhouse
+          cd python && python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y"
           CIBW_BEFORE_BUILD: "pip install -U setuptools-rust"
@@ -47,7 +47,7 @@ jobs:
         if: matrix.build_env.arch != 'x86'
       - name: Build wheels
         run: |
-          python -m cibuildwheel --output-dir wheelhouse
+          cd python && python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BEFORE_BUILD: "pip install -U setuptools-rust"
           CIBW_SKIP: "cp27-* cp34-* pp* *amd64"
@@ -58,7 +58,7 @@ jobs:
         if: matrix.build_env.arch == 'x86'
       - uses: actions/upload-artifact@v2
         with:
-          path: ./wheelhouse/*.whl
+          path: ./python/wheelhouse/*.whl
   create_source_dist:
     name: Create sdist package
     runs-on: ubuntu-latest
