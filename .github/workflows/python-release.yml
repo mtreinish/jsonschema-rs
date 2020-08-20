@@ -37,6 +37,7 @@ jobs:
           cd python && python -m cibuildwheel --output-dir wheelhouse
         env:
           CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y"
+          CIBW_BEFORE_BUILD_LINUX: export PATH="$PATH:$HOME/.cargo/env"
           CIBW_BEFORE_BUILD: "pip install -U setuptools-rust"
           CIBW_SKIP: "cp27-* cp34-* pp* *win32"
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2010"
