@@ -1,98 +1,63 @@
 name: Python Release
 
 on:
-  push:
-    tags:
-      - python-v*
+  push: [use-cibuildwheel]
 
 jobs:
-  create_macos_and_windows_wheels:
-    name: Wheels for Python ${{ matrix.python-version }} / ${{ matrix.os }}
+  build_wheels:
+    name: Build wheels on ${{ matrix.build_env.os }}
+    runs-on: ${{ matrix.build_env.os }}
     strategy:
       matrix:
-        os: [macos-latest, windows-latest]
-        python-version: ['3.5', '3.6', '3.7', '3.8']
-        architecture: [x86, x64]
-        exclude:
-        - os: macos-latest
-          architecture: x86
-        - os: windows-latest
-          # TODO: Re-enable windows 32bits
-          architecture: x86
-    runs-on: ${{ matrix.os }}
+        build_env: [{os: ubuntu-18.04, arch: x64}, {os: windows-latest, arch: x64}, {os: windows-latest, arch: x86}, {os: macos-latest, arch: x64}]
     steps:
       - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+        if: matrix.build_env.arch != 'x86'
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+        if: matrix.build_env.arch == 'x86'
       - uses: actions/setup-python@v2
+        name: Install Python
         with:
-          python-version: ${{ matrix.python-version }}
-          architecture: ${{ matrix.architecture }}
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: Install Tox
-        run: pip install tox
-      - name: Build wheel
-        working-directory: ./python
-        run: tox -e build-wheel
+          python-version: '3.7'
+      - name: Install cibuildwheel
+        run: |
+          python -m pip install cibuildwheel==1.5.5
+      - name: Build wheels
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BEFORE_ALL_LINUX: "curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain nightly -y"
+          CIBW_BEFORE_BUILD: "pip install -U setuptools-rust"
+          CIBW_SKIP: "cp27-* cp34-* pp* *win32"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2010"
+          CIBW_MANYLINUX_I686_IMAGE: "manylinux2010"
+          CIBW_TEST_COMMAND: "python3 -m pytest {project}/tests-py"
+          CIBW_TEST_REQUIRES: "pytest flask hypothesis pytest-benchmark"
+          CIBW_ENVIRONMENT_MACOS: "MACOSX_DEPLOYMENT_TARGET=10.9"
+        if: matrix.build_env.arch != 'x86'
+      - name: Build wheels
+        run: |
+          python -m cibuildwheel --output-dir wheelhouse
+        env:
+          CIBW_BEFORE_BUILD: "pip install -U setuptools-rust"
+          CIBW_SKIP: "cp27-* cp34-* pp* *amd64"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2010"
+          CIBW_MANYLINUX_I686_IMAGE: "manylinux2010"
+          CIBW_TEST_COMMAND: "python3 -m pytest {project}/tests-py"
+          CIBW_TEST_REQUIRES: "pytest flask hypothesis pytest-benchmark"
+        if: matrix.build_env.arch == 'x86'
       - uses: actions/upload-artifact@v2
         with:
-          name: Distribution Artifacts
-          path: python/dist/
-
-  create_wheels_manylinux:
-    name: Wheels for Python ${{ matrix.PYTHON_IMPLEMENTATION_ABI }} / Linux
-    strategy:
-      fail-fast: false
-      matrix:
-        # List of the language-implementation API pairs to publish wheels for
-        # The list of supported is obtainable by running `docker run quay.io/pypa/manylinux2014_x86_64 ls /opt/python`
-        PYTHON_IMPLEMENTATION_ABI: [cp35-cp35m, cp36-cp36m, cp37-cp37m, cp38-cp38]
-    runs-on: ubuntu-latest
-    container: quay.io/pypa/manylinux2014_x86_64  # Builds wheels on CentOS 7 (supported until 2024)
-    env:
-      # Variable needed for PyO3 to properly identify the python interpreter
-      PYTHON_SYS_EXECUTABLE: /opt/python/${{ matrix.PYTHON_IMPLEMENTATION_ABI }}/bin/python
-    steps:
-      - uses: actions/checkout@v2
-      - name: Install/Update OpenSSL
-        run: |
-          retryCount=0
-          # yum install seems to be flakey (due to network timeouts)
-          # retry up to 5 times with a 10s sleep in case of failure
-          until yum install openssl-devel --assumeyes --noplugins; do
-            # For some reason the install has failed
-            if [ ${retryCount} -eq 5 ]; then
-                false
-            else
-              retryCount=$((${retryCount}+1))
-            fi
-            sleep 10
-          done
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: nightly
-          override: true
-      - name: Install Tox
-        run: ${{ env.PYTHON_SYS_EXECUTABLE }} -m pip install tox
-      - name: Build wheel
-        working-directory: ./python
-        run: |
-          ${{ env.PYTHON_SYS_EXECUTABLE }} -m tox -e build-wheel
-          # Ensure that the wheel is tagged as manylinux2014 platform
-          auditwheel repair \
-            --wheel-dir=./dist \
-            --plat manylinux2014_x86_64 \
-            ./dist/jsonschema_rs-*-${{ matrix.PYTHON_IMPLEMENTATION_ABI }}-linux_x86_64.whl
-          # Remove `linux_x86_64` tagged wheels as they are not supported by https://pypi.org
-          # Example https://github.com/Stranger6667/jsonschema-rs/runs/766075274
-          rm ./dist/jsonschema_rs-*-${{ matrix.PYTHON_IMPLEMENTATION_ABI }}-linux_x86_64.whl
-      - uses: actions/upload-artifact@v2
-        with:
-          name: Distribution Artifacts
-          path: python/dist/
+          path: ./wheelhouse/*.whl
 
   create_source_dist:
     name: Create sdist package
@@ -117,21 +82,21 @@ jobs:
           name: Distribution Artifacts
           path: python/dist/
 
-  upload_to_pypi:
-    needs:
-    - create_macos_and_windows_wheels
-    - create_wheels_manylinux
-    - create_source_dist
-    name: Upload Artifacts to PyPi
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/download-artifact@v2
-      with:
-        name: Distribution Artifacts
-        path: python/dist/
-    - name: Publish distribution package to PyPI
-      uses: pypa/gh-action-pypi-publish@v1.2.2
-      with:
-        user: ${{ secrets.PYPI_USERNAME }}
-        password: ${{ secrets.PYPI_PASSWORD }}
-        packages_dir: python/dist/
+#  upload_to_pypi:
+#    needs:
+#    - create_macos_and_windows_wheels
+#    - create_wheels_manylinux
+#    - create_source_dist
+#    name: Upload Artifacts to PyPi
+#    runs-on: ubuntu-latest
+#    steps:
+#    - uses: actions/download-artifact@v2
+#      with:
+#        name: Distribution Artifacts
+#        path: python/dist/
+#    - name: Publish distribution package to PyPI
+#      uses: pypa/gh-action-pypi-publish@v1.2.2
+#      with:
+#        user: ${{ secrets.PYPI_USERNAME }}
+#        password: ${{ secrets.PYPI_PASSWORD }}
+#        packages_dir: python/dist/
