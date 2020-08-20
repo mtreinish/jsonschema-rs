@@ -1,7 +1,8 @@
 name: Python Release
 
 on:
-  push: [use-cibuildwheel]
+  push:
+    branches: [use-cibuildwheel]
 
 jobs:
   build_wheels:
